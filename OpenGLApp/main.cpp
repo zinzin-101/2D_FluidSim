@@ -18,6 +18,7 @@
 
 void frameBufferSizeCallback(GLFWwindow* window, int width, int height);
 void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods);
+void mouseCallBack(GLFWwindow* window, double xpos, double ypos);
 void processInput(GLFWwindow* window);
 
 // settings
@@ -26,8 +27,8 @@ void processInput(GLFWwindow* window);
 const unsigned int WIDTH = 1920;
 const unsigned int HEIGHT = 1080;
 #else
-const unsigned int WIDTH = 1600;
-const unsigned int HEIGHT = 900;
+const unsigned int WIDTH = 800;
+const unsigned int HEIGHT = 600;
 #endif
 
 //const float WORLD_WIDTH = 226.65f;
@@ -39,6 +40,11 @@ float lastTime = 0.0f;
 // glfw
 GLFWwindow* window = nullptr;
 void toggleFullscreen(GLFWwindow* window);
+float mouseX = 0.0f;
+float mouseY = 0.0f;
+class Fluid;
+Fluid* fluidPtr = nullptr;
+bool isMouseDown = false;
 
 // simulation
 enum Fields {
@@ -52,6 +58,7 @@ const int BORDER_OFFSET = BORDER_SIZE / 2;
 const float OVERRELAXATION = 1.9f;
 const float DENSITY = 1000.0f;
 const float SPACING = 3.0f;
+const float OBSTACLE_RADIUS = 10.0f;
 
 bool isNear(float a, float b);
 
@@ -71,6 +78,10 @@ private:
 	std::vector<float> material;
 	std::vector<float> newMaterial;
 
+	int frameCount;
+	float obstacleRadius;
+	float obstacleX;
+	float obstacleY;
 
 	void integrate(float dt, float gravity) {
 		int n = sizeY;
@@ -138,7 +149,7 @@ private:
 
 		float dx = 0.0f;
 		float dy = 0.0f;
-		std::vector<float>* f;
+		std::vector<float>* f = nullptr;
 		switch (field) {
 		case U_FIELD:
 			f = &uSpeed;
@@ -161,12 +172,14 @@ private:
 		float tx = ((x - dx) - x0 * spacing) * spacing1;
 		int x1 = std::min(x0 + 1, sizeX - BORDER_OFFSET);
 
-		int y0 = std::min((int)std::floor((y - dy) * spacing), sizeY - BORDER_OFFSET);
+		int y0 = std::min((int)std::floor((y - dy) * spacing1), sizeY - BORDER_OFFSET);
 		float ty = ((y - dy) - y0 * spacing) * spacing1;
 		int y1 = std::min(y0 + 1, sizeY - BORDER_OFFSET);
 
 		float sx = 1.0f - tx;
 		float sy = 1.0f - ty;
+
+		if (f == nullptr) return 0.0f;
 
 		std::vector<float>& temp = *f;
 		float value =
@@ -187,7 +200,7 @@ private:
 
 	float getAverageVSpeedAtCell(int x, int y) {
 		int n = sizeY;
-		int v = (vSpeed.at((x - 1) * n + y) + vSpeed.at(x * n + y) +
+		float v = (vSpeed.at((x - 1) * n + y) + vSpeed.at(x * n + y) +
 			vSpeed.at((x - 1) * n + y + 1) + vSpeed.at(x * n + y + 1)) * 0.25f;
 		return v;
 	}
@@ -267,6 +280,12 @@ public:
 		newMaterial = std::vector<float>(totalCells);
 
 		std::fill(material.begin(), material.end(), 1.0f);
+		std::fill(solid.begin(), solid.end(), 1.0f);
+
+		frameCount = 0;
+		obstacleX = 0.0f;
+		obstacleY = 0.0f;
+		obstacleRadius = OBSTACLE_RADIUS;
 	}
 
 	void update(float dt, float gravity, int iterations) {
@@ -278,6 +297,43 @@ public:
 		extrapolate();
 		advectVelocity(dt);
 		advectSmoke(dt);
+
+		frameCount++;
+	}
+
+	void setObstacle(float dt, float x, float y, bool reset) {
+		float vx = 0.0f;
+		float vy = 0.0f;
+		if (!reset) {
+			vx = (x - obstacleX) / dt;
+			vy = (y - obstacleY) / dt;
+		}
+
+		obstacleX = x;
+		obstacleY = y;
+
+		float r = obstacleRadius;
+		int n = sizeY;
+		float cellDiagonalLength = std::sqrt(2.0f) * spacing;
+
+		for (int i = BORDER_OFFSET; i < sizeX - BORDER_SIZE; i++) {
+			for (int j = BORDER_OFFSET; j < sizeY - BORDER_SIZE; j++) {
+				solid[i * n + j] = 1.0f;
+
+				float dx = (i + 0.5f) * spacing - x;
+				float dy = (j + 0.5f) * spacing - y;
+
+				if (dx * dx + dy * dy < r * r) {
+					solid[i * n + j] = 0.0f;
+					material[i * n + j] = 0.5f + 0.5f * std::sin(0.1f * (float)frameCount);
+					uSpeed[i * n + j] = vx;
+					uSpeed[(i + 1) * n + j] = vx;
+					vSpeed[i * n + j] = vy;
+					vSpeed[i * n + j + 1] = vy;
+				}
+
+			}
+		}
 	}
 
 	int getSizeX() const {
@@ -290,6 +346,10 @@ public:
 
 	float* getMaterialData() {
 		return material.data();
+	}
+
+	float getSpacing() const {
+		return spacing;
 	}
 };
 
@@ -312,9 +372,9 @@ int main() {
 	GLFWmonitor* primaryMonitor = glfwGetPrimaryMonitor();
 	const GLFWvidmode* mode = glfwGetVideoMode(primaryMonitor);
 	#ifdef FULLSCREEN
-	window = glfwCreateWindow(WIDTH, HEIGHT, "2D_Pinball", primaryMonitor, NULL);
+	window = glfwCreateWindow(WIDTH, HEIGHT, "2D_FLuidSim", primaryMonitor, NULL);
 	#else
-	window = glfwCreateWindow(WIDTH, HEIGHT, "2D_Pinball", NULL, NULL);
+	window = glfwCreateWindow(WIDTH, HEIGHT, "2D_FLuidSim", NULL, NULL);
 	glfwSetWindowPos(window, (mode->width / 2) - (WIDTH / 2), (mode->height / 2) - (HEIGHT / 2));
 	#endif
 	if (window == NULL) {
@@ -333,6 +393,7 @@ int main() {
 
 	glfwSetFramebufferSizeCallback(window, frameBufferSizeCallback);
 	glfwSetMouseButtonCallback(window, mouseButtonCallback);
+	glfwSetCursorPosCallback(window, mouseCallBack);
 
 	srand(time(NULL));
 
@@ -340,17 +401,21 @@ int main() {
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
+	Fluid fluid = Fluid(DENSITY, 100, 100, SPACING);
+	fluidPtr = &fluid;
+
 	// setup quad
 	float quadVertices[] = {
-		 0.5f,  0.5f, 0.0f,   // top right
-		 0.5f, -0.5f, 0.0f,   // bottom right
-		-0.5f, -0.5f, 0.0f,   // bottom left
-		-0.5f,  0.5f, 0.0f    // top left
+		// position          // uv
+		 1.0f,  1.0f, 0.0f,  1.0f, 1.0f,   // Top Right (0)
+		 1.0f, -1.0f, 0.0f,  1.0f, 0.0f,   // Bottom Right (1)
+		-1.0f, -1.0f, 0.0f,  0.0f, 0.0f,   // Bottom Left (2)
+		-1.0f,  1.0f, 0.0f,  0.0f, 1.0f    // Top Left (3)
 	};
 
 	unsigned int quadIndices[] = {
-		0, 1, 3,
-		1, 2, 3
+		0, 3, 2, 
+		2, 1, 0  
 	};
 
 	glGenVertexArrays(1, &vao);
@@ -363,8 +428,12 @@ int main() {
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
 	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(quadIndices), quadIndices, GL_STATIC_DRAW);
 
-	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
 	glEnableVertexAttribArray(0);
+
+	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
+	glEnableVertexAttribArray(1);
+
 	glBindVertexArray(0);
 
 	// setup smoke texture
@@ -376,9 +445,10 @@ int main() {
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, WIDTH, HEIGHT, 0, GL_RED, GL_FLOAT, NULL);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, fluid.getSizeX(), fluid.getSizeY(), 0, GL_RED, GL_FLOAT, NULL);
 
-	Fluid fluid = Fluid(DENSITY, WIDTH, HEIGHT, SPACING);
+	Shader shader = Shader("smoke.vert", "smoke.frag");
+	shader.setInt("smokeTexture", 0);
 
 	while (!glfwWindowShouldClose(window)) {
 		processInput(window);
@@ -388,16 +458,23 @@ int main() {
 		lastTime = currentTime;
 
 		// update
-		fluid.update(deltaTime, -9.81f, 40);
+		if (isMouseDown) {
+			fluidPtr->setObstacle(1.0f / 60.0f, mouseX, mouseY, false);
+		}
+		fluid.update(1.0f / 60.0f, -9.81f, 1);
 
 		// render
 		glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
+		//glClearColor(1.0f, 0.0f, 0.0f, 1.0f);
 		glClear(GL_COLOR_BUFFER_BIT);
 
 		glBindTexture(GL_TEXTURE_2D, smokeTexture);
-		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, fluid.sizeX, fluid.sizeY,
-			GL_RED, GL_FLOAT, fluid.material.data());
+		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, fluid.getSizeX(), fluid.getSizeY(), GL_RED, GL_FLOAT, fluid.getMaterialData());
 
+		shader.use();
+		//glm::mat4 projection = glm::ortho(0.0f, (float)WIDTH, 0.0f, (float)HEIGHT);
+		glm::mat4 projection(1.0f);
+		shader.setMat4("projection", projection);
 		glBindVertexArray(vao);
 		glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 
@@ -413,12 +490,11 @@ void frameBufferSizeCallback(GLFWwindow* window, int width, int height) {
 }
 
 void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods) {
-
 	if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
-
+		isMouseDown = true;
 	}
 	else if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_RELEASE) {
-
+		isMouseDown = false;
 	}
 
 	if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS) {
@@ -427,6 +503,23 @@ void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods) {
 	else if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_RELEASE) {
 
 	}
+}
+
+void mouseCallBack(GLFWwindow* window, double xpos, double ypos) {
+	if (fluidPtr == nullptr) return;
+
+	int width, height;
+	glfwGetWindowSize(window, &width, &height);
+
+	float x = (float)xpos / (float)width;
+	float y = ((float)height - (float)ypos) / (float)height;
+
+	float worldWidth = fluidPtr->getSizeX() * fluidPtr->getSpacing();
+	float worldHeight = fluidPtr->getSizeY() * fluidPtr->getSpacing();
+
+	mouseX = y * worldWidth;
+	mouseY = x * worldHeight;
+
 }
 
 void processInput(GLFWwindow* window) {

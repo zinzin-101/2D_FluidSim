@@ -141,17 +141,11 @@
     <ClCompile Include="main.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="animation.fs" />
-    <None Include="animation.vs" />
-    <None Include="square.fs" />
-    <None Include="square.vs" />
-    <None Include="circle.fs" />
-    <None Include="circle.vs" />
-    <None Include="texture.fs" />
-    <None Include="texture.vs" />
+    <ClInclude Include="Utils.h" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="Utils.h" />
+    <None Include="smoke.frag" />
+    <None Include="smoke.vert" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
