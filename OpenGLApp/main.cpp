@@ -461,7 +461,7 @@ int main() {
 		if (isMouseDown) {
 			fluidPtr->setObstacle(1.0f / 60.0f, mouseX, mouseY, false);
 		}
-		fluid.update(1.0f / 60.0f, -9.81f, 1);
+		fluid.update(1.0f / 60.0f, -9.81f, 40);
 
 		// render
 		glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
