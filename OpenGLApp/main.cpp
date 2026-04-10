@@ -74,9 +74,9 @@ private:
 	std::vector<float> newSpeedU;
 	std::vector<float> newSpeedV;
 	std::vector<float> pressure;
-	std::vector<float> solid;
-	std::vector<float> material;
-	std::vector<float> newMaterial;
+	std::vector<float> freeSpace;
+	std::vector<float> smoke;
+	std::vector<float> newSmoke;
 
 	int frameCount;
 	float obstacleRadius;
@@ -88,8 +88,8 @@ private:
 		for (int x = BORDER_OFFSET; x < sizeX; x++) {
 			for (int y = BORDER_OFFSET; y < sizeY; y++) {
 				// check if it's a border cell
-				float current = solid.at(x * n + y);
-				float below = solid.at(x * n + y - 1);
+				float current = freeSpace.at(x * n + y);
+				float below = freeSpace.at(x * n + y - 1);
 				if (!isNear(current, 0.0f) && !isNear(below, 0.0f)) {
 					vSpeed[x * n + y] += gravity * dt;
 				}
@@ -103,13 +103,13 @@ private:
 		for (int i = 0; i < iterations; i++) {
 			for (int x = BORDER_OFFSET; x < sizeX - BORDER_OFFSET; x++) {
 				for (int y = BORDER_OFFSET; y < sizeY - BORDER_OFFSET; y++) {
-					float current = solid.at(x * n + y);
+					float current = freeSpace.at(x * n + y);
 					if (isNear(current, 0.0f)) continue;
 
-					float left = solid.at((x - 1) * n + y);
-					float right = solid.at((x + 1) * n + y);;
-					float top = solid.at(x * n + y + 1);
-					float bottom = solid.at(x * n + y - 1);
+					float left = freeSpace.at((x - 1) * n + y);
+					float right = freeSpace.at((x + 1) * n + y);;
+					float top = freeSpace.at(x * n + y + 1);
+					float bottom = freeSpace.at(x * n + y - 1);
 					float sum = left + right + top + bottom;
 					if (isNear(sum, 0.0f)) continue;
 
@@ -162,7 +162,7 @@ private:
 			break;
 
 		case S_FIELD:
-			f = &material;
+			f = &smoke;
 			dx = spacing2;
 			dy = spacing2;
 			break;
@@ -215,7 +215,7 @@ private:
 		for (int i = BORDER_OFFSET; i < sizeX; i++) {
 			for (int j = BORDER_OFFSET; j < sizeY; j++) {
 				// u component
-				if (solid.at(i * n + j) != 0.0 && solid.at((i - BORDER_OFFSET) * n + j) != 0.0 && j < sizeY - BORDER_OFFSET) {
+				if (freeSpace.at(i * n + j) != 0.0 && freeSpace.at((i - BORDER_OFFSET) * n + j) != 0.0 && j < sizeY - BORDER_OFFSET) {
 					float x = i * spacing;
 					float y = j * spacing + spacing2;
 					float u = uSpeed.at(i * n + j);
@@ -226,7 +226,7 @@ private:
 					newSpeedU[i * n + j] = u;
 				}
 				// v component
-				if (!isNear(solid.at(i * n + j), 0.0f) && !isNear(solid.at(i * n + j - BORDER_OFFSET), 0.0f) && i < sizeX - BORDER_OFFSET) {
+				if (!isNear(freeSpace.at(i * n + j), 0.0f) && !isNear(freeSpace.at(i * n + j - BORDER_OFFSET), 0.0f) && i < sizeX - BORDER_OFFSET) {
 					float x = i * spacing + spacing2;
 					float y = j * spacing;
 					float u = getAverageUSpeedAtCell(i, j);
@@ -244,7 +244,7 @@ private:
 	}
 
 	void advectSmoke(float dt) {
-		newMaterial = material;
+		newSmoke = smoke;
 
 		int n = sizeY;
 		float spacing2 = 0.5f * spacing;
@@ -252,18 +252,18 @@ private:
 		for (int i = BORDER_OFFSET; i < sizeX - BORDER_OFFSET; i++) {
 			for (int j = BORDER_OFFSET; j < sizeY - BORDER_OFFSET; j++) {
 
-				if (!isNear(solid.at(i * n + j), 0.0f)) {
+				if (!isNear(freeSpace.at(i * n + j), 0.0f)) {
 					float u = (uSpeed.at(i * n + j) + uSpeed.at((i + 1) * n + j)) * 0.5f;
 					float v = (vSpeed.at(i * n + j) + vSpeed.at(i * n + j + 1)) * 0.5f;
 					float x = i * spacing + spacing2 - dt * u;
 					float y = j * spacing + spacing2 - dt * v;
 
-					newMaterial[i * n + j] = sampleField(x, y, S_FIELD);
+					newSmoke[i * n + j] = sampleField(x, y, S_FIELD);
 				}
 			}
 		}
 
-		material = newMaterial;
+		smoke = newSmoke;
 	}
 
 
@@ -275,12 +275,12 @@ public:
 		newSpeedU = std::vector<float>(totalCells);
 		newSpeedV = std::vector<float>(totalCells);
 		pressure = std::vector<float>(totalCells);
-		solid = std::vector<float>(totalCells);
-		material = std::vector<float>(totalCells);
-		newMaterial = std::vector<float>(totalCells);
+		freeSpace = std::vector<float>(totalCells);
+		smoke = std::vector<float>(totalCells);
+		newSmoke = std::vector<float>(totalCells);
 
-		std::fill(material.begin(), material.end(), 1.0f);
-		std::fill(solid.begin(), solid.end(), 1.0f);
+		std::fill(smoke.begin(), smoke.end(), 1.0f);
+		std::fill(freeSpace.begin(), freeSpace.end(), 1.0f);
 
 		frameCount = 0;
 		obstacleX = 0.0f;
@@ -318,14 +318,14 @@ public:
 
 		for (int i = BORDER_OFFSET; i < sizeX - BORDER_SIZE; i++) {
 			for (int j = BORDER_OFFSET; j < sizeY - BORDER_SIZE; j++) {
-				solid[i * n + j] = 1.0f;
+				freeSpace[i * n + j] = 1.0f;
 
 				float dx = (i + 0.5f) * spacing - x;
 				float dy = (j + 0.5f) * spacing - y;
 
 				if (dx * dx + dy * dy < r * r) {
-					solid[i * n + j] = 0.0f;
-					material[i * n + j] = 0.5f + 0.5f * std::sin(0.1f * (float)frameCount);
+					freeSpace[i * n + j] = 0.0f;
+					smoke[i * n + j] = 0.5f + 0.5f * std::sin(0.1f * (float)frameCount);
 					uSpeed[i * n + j] = vx;
 					uSpeed[(i + 1) * n + j] = vx;
 					vSpeed[i * n + j] = vy;
@@ -345,7 +345,11 @@ public:
 	}
 
 	float* getMaterialData() {
-		return material.data();
+		return smoke.data();
+	}
+
+	float* getPressureData() {
+		return pressure.data();
 	}
 
 	float getSpacing() const {
@@ -440,8 +444,8 @@ int main() {
 	glGenTextures(1, &smokeTexture);
 	glBindTexture(GL_TEXTURE_2D, smokeTexture);
 
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
@@ -470,6 +474,7 @@ int main() {
 
 		glBindTexture(GL_TEXTURE_2D, smokeTexture);
 		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, fluid.getSizeX(), fluid.getSizeY(), GL_RED, GL_FLOAT, fluid.getMaterialData());
+		//glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, fluid.getSizeX(), fluid.getSizeY(), GL_RED, GL_FLOAT, fluid.getPressureData());
 
 		shader.use();
 		//glm::mat4 projection = glm::ortho(0.0f, (float)WIDTH, 0.0f, (float)HEIGHT);
