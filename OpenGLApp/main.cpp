@@ -325,7 +325,8 @@ public:
 
 				if (dx * dx + dy * dy < r * r) {
 					freeSpace[i * n + j] = 0.0f;
-					smoke[i * n + j] = 0.5f + 0.5f * std::sin(0.1f * (float)frameCount);
+					//smoke[i * n + j] = 0.5f + 0.5f * std::sin(0.1f * (float)frameCount);
+					smoke[i * n + j] = 0.0f;
 					uSpeed[i * n + j] = vx;
 					uSpeed[(i + 1) * n + j] = vx;
 					vSpeed[i * n + j] = vy;
@@ -463,7 +464,7 @@ int main() {
 
 		// update
 		if (isMouseDown) {
-			fluidPtr->setObstacle(1.0f / 60.0f, mouseX, mouseY, false);
+			fluidPtr->setObstacle(1.0f / 60.0f, mouseX, mouseY, true);
 		}
 		fluid.update(1.0f / 60.0f, -9.81f, 40);
 
