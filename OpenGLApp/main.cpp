@@ -5,7 +5,7 @@
 #include <shader.h>
 #include <filesystem.h>
 
-#include "Utils.h"
+#include "ComputeShader.h"
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
@@ -43,7 +43,9 @@ void toggleFullscreen(GLFWwindow* window);
 float mouseX = 0.0f;
 float mouseY = 0.0f;
 class Fluid;
-Fluid* fluidPtr = nullptr;
+class FluidGPU;
+//Fluid* fluidPtr = nullptr;
+FluidGPU* fluidPtr = nullptr;
 bool isMouseDown = false;
 
 // simulation
@@ -63,7 +65,7 @@ const float OBSTACLE_RADIUS = 10.0f;
 bool isNear(float a, float b);
 
 class Fluid {
-private:
+protected:
 	float density;
 	int sizeX;
 	int sizeY;
@@ -83,7 +85,7 @@ private:
 	float obstacleX;
 	float obstacleY;
 
-	void integrate(float dt, float gravity) {
+	virtual void integrate(float dt, float gravity) {
 		int n = sizeY;
 		for (int x = BORDER_OFFSET; x < sizeX; x++) {
 			for (int y = BORDER_OFFSET; y < sizeY; y++) {
@@ -97,7 +99,7 @@ private:
 		}
 	}
 
-	void solveIncompressibility(float dt, int iterations) {
+	virtual void solveIncompressibility(float dt, int iterations) {
 		int n = sizeY;
 		float pressureScaling = density * spacing / dt;
 		for (int i = 0; i < iterations; i++) {
@@ -127,7 +129,7 @@ private:
 		}
 	}
 
-	void extrapolate() {
+	virtual void extrapolate() {
 		int n = sizeY;
 		for (int x = 0; x < sizeX; x++) {
 			uSpeed[x * n + 0] = uSpeed.at(x * n + 1);
@@ -139,7 +141,7 @@ private:
 		}
 	}
 
-	float sampleField(float x, float y, Fields field) {
+	virtual float sampleField(float x, float y, Fields field) {
 		int n = sizeY;
 		float spacing1 = 1.0f / spacing;
 		float spacing2 = 0.5f * spacing;
@@ -205,7 +207,7 @@ private:
 		return v;
 	}
 
-	void advectVelocity(float dt) {
+	virtual void advectVelocity(float dt) {
 		newSpeedU = uSpeed;
 		newSpeedV = vSpeed;
 
@@ -243,7 +245,7 @@ private:
 		vSpeed = newSpeedV;
 	}
 
-	void advectSmoke(float dt) {
+	virtual void advectSmoke(float dt) {
 		newSmoke = smoke;
 
 		int n = sizeY;
@@ -288,7 +290,7 @@ public:
 		obstacleRadius = OBSTACLE_RADIUS;
 	}
 
-	void update(float dt, float gravity, int iterations) {
+	virtual void update(float dt, float gravity, int iterations) {
 		integrate(dt, gravity);
 
 		std::fill(pressure.begin(), pressure.end(), 0.0f);
@@ -358,6 +360,189 @@ public:
 	}
 };
 
+class FluidGPU : public Fluid {
+private:
+	ComputeShader integrateShader;
+	ComputeShader incompressibilityShader;
+	ComputeShader extrapolateShader;
+	ComputeShader advectVelocityShader;
+	ComputeShader advectSmokeShader;
+	unsigned int velocityTexture; // R channel: U, G channel: V
+	unsigned int freeSpaceTexture; // R channel only
+	unsigned int pressureTexture; // R channel only
+	unsigned int newVelocityTexture; // R channel: U, G channel: V
+	unsigned int smokeTexture; // R channel only
+	unsigned int newSmokeTexture; // R channel only
+
+	virtual void integrate(float dt, float gravity) override {
+		integrateShader.use();
+		integrateShader.setFloat("dt", dt);
+		integrateShader.setFloat("gravity", gravity);
+
+		glBindImageTexture(0, velocityTexture, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
+		glBindImageTexture(1, freeSpaceTexture, 0, GL_FALSE, 0, GL_READ_ONLY, GL_R32F);
+
+		glDispatchCompute((sizeX + 15) / 16, (sizeY + 15) / 16, 1);
+		glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+	}
+
+	virtual void solveIncompressibility(float dt, int iterations) override {
+		incompressibilityShader.use();
+
+		// reset all to zero
+		float zero = 0.0f;
+		glClearTexImage(pressureTexture, 0, GL_RED, GL_FLOAT, &zero);
+
+		float pressureScaling = density * spacing / dt;
+		incompressibilityShader.setFloat("pressureScaling", pressureScaling);
+		incompressibilityShader.setFloat("overrelaxation", 1.9f);
+		incompressibilityShader.setIVec2("gridSize", sizeX, sizeY);
+
+		glBindImageTexture(0, velocityTexture, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
+		glBindImageTexture(1, freeSpaceTexture, 0, GL_FALSE, 0, GL_READ_ONLY, GL_R32F);
+		glBindImageTexture(2, pressureTexture, 0, GL_FALSE, 0, GL_READ_WRITE, GL_R32F);
+
+		// using Red-Black Gauss-Seidel method
+		for (int i = 0; i < iterations; i++) {
+			// red pass
+			incompressibilityShader.setInt("pass", 0);
+			glDispatchCompute((sizeX + 15) / 16, (sizeY + 15) / 16, 1);
+			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
+			// black pass
+			incompressibilityShader.setInt("pass", 1);
+			glDispatchCompute((sizeX + 15) / 16, (sizeY + 15) / 16, 1);
+			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+		}
+	}
+
+	virtual void extrapolate() override {
+		extrapolateShader.use();
+		glBindImageTexture(0, velocityTexture, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
+		glDispatchCompute((sizeX + 15) / 16, (sizeY + 15) / 16, 1);
+		glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+	}
+
+	virtual void advectVelocity(float dt) override {
+		advectVelocityShader.use();
+		advectVelocityShader.setFloat("dt", dt);
+		advectVelocityShader.setFloat("spacing", spacing);
+
+		glBindImageTexture(0, newVelocityTexture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F);
+
+		glActiveTexture(GL_TEXTURE2);
+		glBindTexture(GL_TEXTURE_2D, velocityTexture);
+		advectVelocityShader.setInt("newVelocityTexture", 2);
+
+		glDispatchCompute((sizeX + 15) / 16, (sizeY + 15) / 16, 1);
+		glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
+		std::swap(velocityTexture, newVelocityTexture);
+	}
+
+	virtual void advectSmoke(float dt) override {
+		advectSmokeShader.use();
+		advectSmokeShader.setFloat("dt", dt);
+		advectSmokeShader.setFloat("spacing", spacing);
+
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, velocityTexture);
+		advectSmokeShader.setInt("velocityTexture", 0);
+
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(GL_TEXTURE_2D, smokeTexture);
+		advectSmokeShader.setInt("smokeTexture", 1);
+
+		glBindImageTexture(0, newSmokeTexture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R32F);
+
+		glDispatchCompute((sizeX + 15) / 16, (sizeY + 15) / 16, 1);
+		glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
+		std::swap(smokeTexture, newSmokeTexture);
+	}
+
+public:
+	FluidGPU(float density, int width, int height, float spacing) :
+		Fluid(density, width, height, spacing),
+		integrateShader("integrate.comp"),
+		incompressibilityShader("incompressibility.comp"),
+		extrapolateShader("extrapolate.comp"),
+		advectVelocityShader("advect_velocity.comp"),
+		advectSmokeShader("advect_smoke.comp"),
+		velocityTexture{}, freeSpaceTexture{}, pressureTexture{}, newVelocityTexture{}, smokeTexture{}, newSmokeTexture{}
+	{
+		integrateShader.use();
+		integrateShader.setIVec2("gridSize", sizeX, sizeY);
+
+		incompressibilityShader.use();
+		incompressibilityShader.setIVec2("gridSize", sizeX, sizeY);
+
+		extrapolateShader.use();
+		extrapolateShader.setIVec2("gridSize", sizeX, sizeY);
+
+		advectVelocityShader.use();
+		advectVelocityShader.setIVec2("gridSize", sizeX, sizeY);
+
+		advectSmokeShader.use();
+		advectSmokeShader.setIVec2("gridSize", sizeX, sizeY);
+
+		// velocity
+		glGenTextures(1, &velocityTexture);
+		glBindTexture(GL_TEXTURE_2D, velocityTexture);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, sizeX, sizeY, 0, GL_RGBA, GL_FLOAT, NULL);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+		glGenTextures(1, &newVelocityTexture);
+		glBindTexture(GL_TEXTURE_2D, newVelocityTexture);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, sizeX, sizeY, 0, GL_RGBA, GL_FLOAT, NULL);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+		// free space
+		glGenTextures(1, &freeSpaceTexture);
+		glBindTexture(GL_TEXTURE_2D, freeSpaceTexture);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, sizeX, sizeY, 0, GL_RED, GL_FLOAT, freeSpace.data());
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+		// pressure
+		glGenTextures(1, &pressureTexture);
+		glBindTexture(GL_TEXTURE_2D, pressureTexture);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, sizeX, sizeY, 0, GL_RED, GL_FLOAT, NULL);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+		// smoke
+		glGenTextures(1, &smokeTexture);
+		glBindTexture(GL_TEXTURE_2D, smokeTexture);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, sizeX, sizeY, 0, GL_RED, GL_FLOAT, smoke.data());
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+		glGenTextures(1, &newSmokeTexture);
+		glBindTexture(GL_TEXTURE_2D, newSmokeTexture);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, sizeX, sizeY, 0, GL_RED, GL_FLOAT, NULL);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	}
+
+	virtual void update(float dt, float gravity, int iterations) override {
+		integrate(dt, gravity);
+		solveIncompressibility(dt, iterations);
+
+		extrapolate();
+		advectVelocity(dt);
+		advectSmoke(dt);
+
+		frameCount++;
+	}
+};
+
 // rendering
 unsigned int vao;
 unsigned int vbo;
@@ -370,8 +555,8 @@ bool getKeyDown(GLFWwindow* window, unsigned int key);
 
 int main() {
 	glfwInit();
-	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
+	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 4);
 	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
 	GLFWmonitor* primaryMonitor = glfwGetPrimaryMonitor();
@@ -406,7 +591,8 @@ int main() {
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-	Fluid fluid = Fluid(DENSITY, 100, 100, SPACING);
+	//Fluid fluid = Fluid(DENSITY, 100, 100, SPACING);
+	FluidGPU fluid = FluidGPU(DENSITY, 100, 100, SPACING);
 	fluidPtr = &fluid;
 
 	// setup quad

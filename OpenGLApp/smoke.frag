@@ -6,8 +6,7 @@ uniform sampler2D smokeTexture;
 
 void main() {
     float density = texture(smokeTexture, TexCoords).r;
-    
-    // Render as white smoke on a dark background
+
     vec3 smokeColor = vec3(1.0, 1.0, 1.0);
     FragColor = vec4(smokeColor, density); 
     //FragColor = vec4(TexCoords, 1.0, 1.0);

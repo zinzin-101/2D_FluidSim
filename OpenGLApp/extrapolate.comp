@@ -1,0 +1,41 @@
+#version 430 core
+
+layout(local_size_x = 16, local_size_y = 16) in;
+
+layout(rgba32f, binding = 0) uniform image2D velocityImage;
+
+uniform ivec2 gridSize;
+
+void main() {
+    ivec2 id = ivec2(gl_GlobalInvocationID.xy);
+
+    // check only for edges of grid
+    bool leftGrid = id.x == 0;
+    bool rightGrid = id.x == gridSize.x - 1;
+    bool bottomGrid = id.y == 0;
+    bool topGrid = id.y == gridSize.y - 1;
+
+    if (!leftGrid && !rightGrid && !bottomGrid && !topGrid) return;
+
+    vec4 velocity = imageLoad(velocityImage, id);
+
+    if (bottomGrid) {
+        float uAbove = imageLoad(velocityImage, ivec2(id.x, 1)).r;
+        velocity.r = uAbove;
+    }
+    else if (topGrid) {
+        float uBelow = imageLoad(velocityImage, ivec2(id.x, gridSize.y - 2)).r;
+        velocity.r = uBelow;
+    }
+
+    if (leftGrid) {
+        float vRight = imageLoad(velocityImage, ivec2(1, id.y)).g;
+        velocity.g = vRight;
+    }
+    else if (rightGrid) {
+        float vLeft = imageLoad(velocityImage, ivec2(gridSize.x - 2, id.y)).g;
+        velocity.g = vLeft;
+    }
+
+    imageStore(velocityImage, id, velocity);
+}

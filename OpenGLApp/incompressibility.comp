@@ -1,0 +1,57 @@
+#version 430 core
+
+layout(local_size_x = 16, local_size_y = 16) in;
+
+layout(rgba32f, binding = 0) uniform image2D velocityImage;
+layout(r32f, binding = 1) uniform image2D freeSpaceImage;
+layout(r32f, binding = 2) uniform image2D pressureImage;
+
+uniform float pressureScaling;
+uniform float overrelaxation;
+uniform int pass; // 0 for red, 1 for black
+uniform ivec2 gridSize;
+
+void main() {
+    ivec2 id = ivec2(gl_GlobalInvocationID.xy);
+
+    // bound check
+    if (id.x < 1 || id.y < 1 || id.x >= gridSize.x - 1 || id.y >= gridSize.y - 1) return;
+
+    // skip cells in wrong pass
+    if ((id.x + id.y) % 2 != pass) return;
+
+    // skip obstacle
+    float s = imageLoad(freeSpaceImage, id).r;
+    if (s <= 0.05) return;
+
+    float sLeft = imageLoad(freeSpaceImage, id - ivec2(1, 0)).r;
+    float sRight = imageLoad(freeSpaceImage, id + ivec2(1, 0)).r;
+    float sBottom = imageLoad(freeSpaceImage, id - ivec2(0, 1)).r;
+    float sTop = imageLoad(freeSpaceImage, id + ivec2(0, 1)).r;
+    float sum = sLeft + sRight + sBottom + sTop;
+
+    if (sum <= 0.05) return;
+
+    float uRight = imageLoad(velocityImage, id + ivec2(1, 0)).r;
+    float uLeft = imageLoad(velocityImage, id).r;
+    float vTop = imageLoad(velocityImage, id + ivec2(0, 1)).g;
+    float vBottom = imageLoad(velocityImage, id).g;
+
+    float div = uRight - uLeft + vTop - vBottom;
+
+    float pressureCorrection = -div / sum;
+    pressureCorrection *= overrelaxation;
+
+    float p = imageLoad(pressureImage, id).r;
+    p += pressureScaling * pressureCorrection;
+    imageStore(pressureImage, id, vec4(p));
+
+    uLeft -= sLeft   * pressureCorrection;
+    uRight += sRight  * pressureCorrection;
+    vBottom -= sBottom * pressureCorrection;
+    vTop += sTop    * pressureCorrection;
+
+    imageStore(velocityImage, id, vec4(uLeft, vBottom, 0.0, 1.0));
+    imageStore(velocityImage, id + ivec2(1, 0), vec4(uRight, imageLoad(velocityImage, id + ivec2(1, 0)).g, 0.0, 1.0));
+    imageStore(velocityImage, id + ivec2(0, 1), vec4(imageLoad(velocityImage, id + ivec2(0, 1)).r, vTop, 0.0, 1.0));
+}

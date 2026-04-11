@@ -141,7 +141,7 @@
     <ClCompile Include="main.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="Utils.h" />
+    <ClInclude Include="ComputeShader.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="smoke.frag" />

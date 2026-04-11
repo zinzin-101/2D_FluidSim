@@ -1,0 +1,44 @@
+#version 430 core
+
+// 16x16 blocks
+layout(local_size_x = 16, local_size_y = 16) in;
+
+// velocity: rg = (u, v)
+layout(rgba32f, binding = 0)
+uniform image2D velocityImage;
+
+layout(r32f, binding = 1)
+uniform image2D freeSpaceImage;
+
+uniform float dt;
+uniform float gravity;
+uniform ivec2 gridSize;
+
+void main()
+{
+    ivec2 id = ivec2(gl_GlobalInvocationID.xy);
+
+    // bound check
+    if (id.x >= gridSize.x || id.y >= gridSize.y || id.y < 1)
+    {
+        return;
+    }
+
+    // check current cell and cell below
+    float currentSolid = imageLoad(freeSpaceImage, id).r;
+    float belowSolid = imageLoad(freeSpaceImage, id - ivec2(0, 1)).r;
+
+    // get current velocity (u, v)
+    vec4 velocity = imageLoad(velocityImage, id);
+    float u = velocity.r;
+    float v = velocity.g;
+
+    // apply gravity
+    if (currentSolid > 0.1 && belowSolid > 0.1)
+    {
+        v += gravity * dt;
+    }
+
+    // write back updated velocity
+    imageStore(velocityImage, id, vec4(u, v, 0.0, 1.0));
+}

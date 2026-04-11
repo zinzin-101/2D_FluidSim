@@ -1,0 +1,28 @@
+#version 430 core
+
+layout(local_size_x = 16, local_size_y = 16) in;
+
+uniform sampler2D smokeTexture;   
+uniform sampler2D velocityTexture; 
+
+layout(r32f, binding = 0) uniform image2D smokeWrite;
+
+uniform float dt;
+uniform float spacing;
+uniform ivec2 gridSize;
+
+void main() {
+    ivec2 id = ivec2(gl_GlobalInvocationID.xy);
+    if (id.x >= gridSize.x || id.y >= gridSize.y) return;
+
+    vec2 res = vec2(gridSize);
+
+    vec2 vel = texture(velocityTexture, (vec2(id) + 0.5) / res).rg;
+
+    vec2 backPos = (vec2(id) + 0.5) - (vel * dt / spacing);
+
+    vec2 uv = backPos / res;
+
+    float s = texture(smokeTexture, uv).r;
+    imageStore(smokeWrite, id, vec4(s, 0.0, 0.0, 1.0));
+}
