@@ -10,7 +10,7 @@ Speed up + increased simulation resolution
 
 https://github.com/user-attachments/assets/a1f2bb5f-8cee-431c-96f2-ddbdc7d39e3d
 
-Low simulation resolution
+Low simulation resolution, high performance hit at high resolution
 
 ## References
 - Implementation referenced from [Matthias Müller - Ten Minute Physics](https://github.com/matthias-research/pages/blob/master/tenMinutePhysics/17-fluidSim.html)
