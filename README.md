@@ -2,7 +2,7 @@
 
 ## Simulate using GPU
 
-<video src="https://github.com/user-attachments/assets/1300d85d-5708-4eb8-956b-52a913ac5056" muted autoplay loop playsinline width="100%"></video>
+https://github.com/user-attachments/assets/3a15b727-8c61-4d53-8499-b1f1daa441f5
 
 Speed up + increased simulation resolution
 
