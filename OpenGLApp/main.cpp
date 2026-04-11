@@ -654,10 +654,10 @@ int main() {
 	// setup quad
 	float quadVertices[] = {
 		// position          // uv
-		 1.0f,  1.0f, 0.0f,  1.0f, 1.0f,   // Top Right (0)
-		 1.0f, -1.0f, 0.0f,  1.0f, 0.0f,   // Bottom Right (1)
-		-1.0f, -1.0f, 0.0f,  0.0f, 0.0f,   // Bottom Left (2)
-		-1.0f,  1.0f, 0.0f,  0.0f, 1.0f    // Top Left (3)
+		 1.0f,  1.0f, 0.0f,  1.0f, 1.0f,   
+		 1.0f, -1.0f, 0.0f,  1.0f, 0.0f,   
+		-1.0f, -1.0f, 0.0f,  0.0f, 0.0f,   
+		-1.0f,  1.0f, 0.0f,  0.0f, 1.0f    
 	};
 
 	unsigned int quadIndices[] = {
@@ -854,7 +854,9 @@ glm::vec3 getSciColor(float val, float minVal, float maxVal) {
 	float m = 0.25f;
 	int num = std::floor(val / m);
 	float s = (val - num * m) / m;
-	float r, g, b;
+	float r = 0.0f;
+	float g = 0.0f;
+	float b = 0.0f;
 
 	switch (num) {
 		case 0: r = 0.0f; g = s; b = 1.0f; break;

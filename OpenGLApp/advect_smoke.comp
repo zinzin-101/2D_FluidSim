@@ -12,84 +12,40 @@ uniform float dt;
 uniform float spacing;
 uniform ivec2 gridSize;
 
-float sampleField(
-    sampler2D tex,
-    vec2 worldPos,
-    int fieldType,   // 0 = U, 1 = V, 2 = S
-    float spacing,
-    ivec2 gridSize
-) {
+float sampleField(sampler2D tex, vec2 worldPos, int fieldType, float spacing, ivec2 gridSize) {
     float spacing1 = 1.0 / spacing;
-    float spacing2 = 0.5 * spacing;
-
+    
     float dx = 0.0;
     float dy = 0.0;
+    if (fieldType == 0) dy = 0.5 * spacing;      // U is at (x, y+0.5)
+    else if (fieldType == 1) dx = 0.5 * spacing; // V is at (x+0.5, y)
+    else { dx = 0.5 * spacing; dy = 0.5 * spacing; } // Smoke is at (x+0.5, y+0.5)
 
-    if (fieldType == 0) { // U
-        dy = spacing2;
-    }
-    else if (fieldType == 1) { // V
-        dx = spacing2;
-    }
-    else { // Smoke
-        dx = spacing2;
-        dy = spacing2;
-    }
-
-    float maxX = (gridSize.x - 1) * spacing;
-    float maxY = (gridSize.y - 1) * spacing;
-
-    float x = clamp(worldPos.x - dx, spacing, maxX);
-    float y = clamp(worldPos.y - dy, spacing, maxY);
-
-    float gx = (x - dx) * spacing1;
-    float gy = (y - dy) * spacing1;
+    float gx = (worldPos.x - dx) * spacing1;
+    float gy = (worldPos.y - dy) * spacing1;
 
     int x0 = int(floor(gx));
     int y0 = int(floor(gy));
-
-    x0 = clamp(x0, 0, gridSize.x - 1);
-    y0 = clamp(y0, 0, gridSize.y - 1);
-
-    int x1 = min(x0 + 1, gridSize.x - 1);
-    int y1 = min(y0 + 1, gridSize.y - 1);
-
     float tx = gx - float(x0);
     float ty = gy - float(y0);
 
-    float sx = 1.0 - tx;
-    float sy = 1.0 - ty;
-
-    vec2 res = vec2(gridSize);
-
-    vec2 uv00 = (vec2(x0, y0) + vec2(0.5)) / res;
-    vec2 uv10 = (vec2(x1, y0) + vec2(0.5)) / res;
-    vec2 uv11 = (vec2(x1, y1) + vec2(0.5)) / res;
-    vec2 uv01 = (vec2(x0, y1) + vec2(0.5)) / res;
+    x0 = clamp(x0, 0, gridSize.x - 1);
+    y0 = clamp(y0, 0, gridSize.y - 1);
+    int x1 = min(x0 + 1, gridSize.x - 1);
+    int y1 = min(y0 + 1, gridSize.y - 1);
 
     vec4 f00 = texelFetch(tex, ivec2(x0, y0), 0);
     vec4 f10 = texelFetch(tex, ivec2(x1, y0), 0);
-    vec4 f11 = texelFetch(tex, ivec2(x1, y1), 0);
     vec4 f01 = texelFetch(tex, ivec2(x0, y1), 0);
+    vec4 f11 = texelFetch(tex, ivec2(x1, y1), 0);
 
-    float v00, v10, v11, v01;
+    float v00, v10, v01, v11;
+    if (fieldType == 0) { v00=f00.r; v10=f10.r; v01=f01.r; v11=f11.r; }
+    else if (fieldType == 1) { v00=f00.g; v10=f10.g; v01=f01.g; v11=f11.g; }
+    else { v00=f00.r; v10=f10.r; v01=f01.r; v11=f11.r; }
 
-    if (fieldType == 0) { // U
-        v00 = f00.r; v10 = f10.r; v11 = f11.r; v01 = f01.r;
-    }
-    else if (fieldType == 1) { // V
-        v00 = f00.g; v10 = f10.g; v11 = f11.g; v01 = f01.g;
-    }
-    else { // Smoke
-        v00 = f00.r; v10 = f10.r; v11 = f11.r; v01 = f01.r;
-    }
-
-    return sx * sy * v00 +
-           tx * sy * v10 +
-           tx * ty * v11 +
-           sx * ty * v01;
+    return mix(mix(v00, v10, tx), mix(v01, v11, tx), ty);
 }
-
 void main() {
     ivec2 id = ivec2(gl_GlobalInvocationID.xy);
     
