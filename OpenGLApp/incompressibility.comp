@@ -18,7 +18,7 @@ void main() {
     if (id.x < 1 || id.y < 1 || id.x >= gridSize.x - 1 || id.y >= gridSize.y - 1) return;
 
     // skip cells in wrong pass
-    if ((id.x + id.y) % 2 != pass) return;
+    if ((id.x % 2) + 2 * (id.y % 2) != pass) return;
 
     // skip obstacle
     float s = imageLoad(freeSpaceImage, id).r;

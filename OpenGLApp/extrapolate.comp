@@ -19,22 +19,26 @@ void main() {
 
     vec4 velocity = imageLoad(velocityImage, id);
 
-    if (bottomGrid) {
+if (bottomGrid) {
         float uAbove = imageLoad(velocityImage, ivec2(id.x, 1)).r;
         velocity.r = uAbove;
+        velocity.g = 0.0; 
     }
     else if (topGrid) {
         float uBelow = imageLoad(velocityImage, ivec2(id.x, gridSize.y - 2)).r;
         velocity.r = uBelow;
+        velocity.g = 0.0; 
     }
 
     if (leftGrid) {
         float vRight = imageLoad(velocityImage, ivec2(1, id.y)).g;
         velocity.g = vRight;
+        velocity.r = 0.0; 
     }
     else if (rightGrid) {
-        float vLeft = imageLoad(velocityImage, ivec2(gridSize.x - 2, id.y)).g;
+        float vLeft = imageLoad(velocityImage, ivec2(gridSize.x - 2, id.y)).g; // Assuming this was your rightGrid logic
         velocity.g = vLeft;
+        velocity.r = 0.0; 
     }
 
     imageStore(velocityImage, id, velocity);

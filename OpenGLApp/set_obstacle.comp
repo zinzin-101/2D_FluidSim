@@ -6,7 +6,7 @@ layout(r32f, binding = 1) uniform image2D freeSpaceImage;
 layout(r32f, binding = 2) uniform image2D smokeImage;
 
 uniform vec2 mousePos;    
-uniform vec2 mouseVel;    
+uniform vec2 mouseVel;
 uniform float radius;     
 uniform float spacing;    
 uniform float smokeColor; 
@@ -15,21 +15,32 @@ uniform ivec2 gridSize;
 
 void main() {
     ivec2 id = ivec2(gl_GlobalInvocationID.xy);
-    if (id.x >= gridSize.x || id.y >= gridSize.y) return;
 
-    //if (isReset) {
-    //    imageStore(freeSpaceImage, id, vec4(1.0));
-    //    return;
-    //}
+    if (id.x >= gridSize.x - 1 || id.y >= gridSize.y - 1 || id.x < 1 || id.y < 1) return;
+
+    imageStore(freeSpaceImage, id, vec4(1.0));
+
+    if (isReset) {
+        imageStore(freeSpaceImage, id, vec4(1.0));
+    }
 
     vec2 cellPos = (vec2(id) + 0.5) * spacing;
     float dist = distance(cellPos, mousePos);
 
     if (dist < radius) {
+
         imageStore(freeSpaceImage, id, vec4(0.0));
         
+        imageStore(smokeImage, id, vec4(smokeColor));
+
         imageStore(velocityImage, id, vec4(mouseVel.x, mouseVel.y, 0.0, 1.0));
         
-        imageStore(smokeImage, id, vec4(smokeColor));
+        vec4 rightVel = imageLoad(velocityImage, id + ivec2(1, 0));
+        rightVel.r = mouseVel.x;
+        imageStore(velocityImage, id + ivec2(1, 0), rightVel);
+        
+        vec4 topVel = imageLoad(velocityImage, id + ivec2(0, 1));
+        topVel.g = mouseVel.y;
+        imageStore(velocityImage, id + ivec2(0, 1), topVel);
     }
 }

@@ -2,33 +2,125 @@
 
 layout(local_size_x = 16, local_size_y = 16) in;
 
-layout(rgba32f, binding = 0) uniform image2D newVelocityTexture;
+layout(rgba32f, binding = 0) uniform image2D newVelocityImage;
+layout(r32f, binding = 1) uniform image2D freeSpaceImage;
+
 uniform sampler2D velocityTexture;
 
 uniform float dt;
 uniform float spacing;
 uniform ivec2 gridSize;
 
-vec2 getVelocity(vec2 uv) {
+float getFree(ivec2 id) {
+    return imageLoad(freeSpaceImage, id).r;
+}
+
+vec2 sampleVelocity(vec2 uv) {
     return texture(velocityTexture, uv).rg;
+}
+
+float getAverageV(ivec2 id) {
+    vec2 res = vec2(gridSize);
+
+    float v1 = texture(velocityTexture, (vec2(id) + vec2(0.0, 0.0)) / res).g;
+    float v2 = texture(velocityTexture, (vec2(id) + vec2(0.0, 1.0)) / res).g;
+    float v3 = texture(velocityTexture, (vec2(id) + vec2(1.0, 0.0)) / res).g;
+    float v4 = texture(velocityTexture, (vec2(id) + vec2(1.0, 1.0)) / res).g;
+
+    return 0.25 * (v1 + v2 + v3 + v4);
+}
+
+float getAverageU(ivec2 id) {
+    vec2 res = vec2(gridSize);
+
+    float u1 = texture(velocityTexture, (vec2(id) + vec2(0.0, 0.0)) / res).r;
+    float u2 = texture(velocityTexture, (vec2(id) + vec2(1.0, 0.0)) / res).r;
+    float u3 = texture(velocityTexture, (vec2(id) + vec2(0.0, 1.0)) / res).r;
+    float u4 = texture(velocityTexture, (vec2(id) + vec2(1.0, 1.0)) / res).r;
+
+    return 0.25 * (u1 + u2 + u3 + u4);
+}
+
+float sampleField(sampler2D tex, vec2 worldPos, int fieldType, float spacing, ivec2 gridSize) {
+    float spacing1 = 1.0 / spacing;
+    
+    float dx = 0.0;
+    float dy = 0.0;
+    if (fieldType == 0) dy = 0.5 * spacing;      // U is at (x, y+0.5)
+    else if (fieldType == 1) dx = 0.5 * spacing; // V is at (x+0.5, y)
+    else { dx = 0.5 * spacing; dy = 0.5 * spacing; } // Smoke is at (x+0.5, y+0.5)
+
+    float gx = (worldPos.x - dx) * spacing1;
+    float gy = (worldPos.y - dy) * spacing1;
+
+    int x0 = int(floor(gx));
+    int y0 = int(floor(gy));
+    float tx = gx - float(x0);
+    float ty = gy - float(y0);
+
+    x0 = clamp(x0, 0, gridSize.x - 1);
+    y0 = clamp(y0, 0, gridSize.y - 1);
+    int x1 = min(x0 + 1, gridSize.x - 1);
+    int y1 = min(y0 + 1, gridSize.y - 1);
+
+    vec4 f00 = texelFetch(tex, ivec2(x0, y0), 0);
+    vec4 f10 = texelFetch(tex, ivec2(x1, y0), 0);
+    vec4 f01 = texelFetch(tex, ivec2(x0, y1), 0);
+    vec4 f11 = texelFetch(tex, ivec2(x1, y1), 0);
+
+    float v00, v10, v01, v11;
+    if (fieldType == 0) { v00=f00.r; v10=f10.r; v01=f01.r; v11=f11.r; }
+    else if (fieldType == 1) { v00=f00.g; v10=f10.g; v01=f01.g; v11=f11.g; }
+    else { v00=f00.r; v10=f10.r; v01=f01.r; v11=f11.r; }
+
+    return mix(mix(v00, v10, tx), mix(v01, v11, tx), ty);
 }
 
 void main() {
     ivec2 id = ivec2(gl_GlobalInvocationID.xy);
+
     if (id.x >= gridSize.x || id.y >= gridSize.y) return;
 
     vec2 res = vec2(gridSize);
-    
+    float spacing2 = 0.5 * spacing;
 
-    vec2 posU = vec2(id.x, id.y + 0.5);
-    vec2 velU = getVelocity(posU / res);
-    vec2 backPosU = posU - (velU * dt / spacing);
-    float newU = getVelocity(backPosU / res).r;
+    vec4 current = texelFetch(velocityTexture, id, 0);
+    float newU = current.r;
+    float newV = current.g;
 
-    vec2 posV = vec2(id.x + 0.5, id.y);
-    vec2 velV = getVelocity(posV / res);
-    vec2 backPosV = posV - (velV * dt / spacing);
-    float newV = getVelocity(backPosV / res).g;
+    if (id.x > 0 && id.y < gridSize.y - 1) {
+        float s1 = getFree(id);
+        float s2 = getFree(id - ivec2(1, 0));
 
-    imageStore(newVelocityTexture, id, vec4(newU, newV, 0.0, 1.0));
+        if (s1 > 0.0 && s2 > 0.0) {
+            vec2 pos = vec2(id.x * spacing, id.y * spacing + spacing2);
+
+            float u = current.r;
+            float v = getAverageV(id);
+
+            vec2 backPos = pos - vec2(u, v) * dt;
+
+            vec2 uv = backPos / (res * spacing);
+            newU = sampleField(velocityTexture, backPos, 0, spacing, gridSize);
+        }
+    }
+
+    if (id.y > 0 && id.x < gridSize.x - 1) {
+        float s1 = getFree(id);
+        float s2 = getFree(id - ivec2(0, 1));
+
+        if (s1 > 0.0 && s2 > 0.0) {
+            vec2 pos = vec2(id.x * spacing + spacing2, id.y * spacing);
+
+            float u = getAverageU(id);
+            float v = current.g;
+
+            vec2 backPos = pos - vec2(u, v) * dt;
+
+            vec2 uv = backPos / (res * spacing);
+            newV = sampleField(velocityTexture, backPos, 1, spacing, gridSize);
+        }
+    }
+
+    imageStore(newVelocityImage, id, vec4(newU, newV, 0.0, 1.0));
 }

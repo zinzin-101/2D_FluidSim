@@ -27,8 +27,8 @@ void processInput(GLFWwindow* window);
 const unsigned int WIDTH = 1920;
 const unsigned int HEIGHT = 1080;
 #else
-const unsigned int WIDTH = 800;
-const unsigned int HEIGHT = 600;
+const unsigned int WIDTH = 1000;
+const unsigned int HEIGHT = 1000;
 #endif
 
 //const float WORLD_WIDTH = 226.65f;
@@ -44,9 +44,12 @@ float mouseX = 0.0f;
 float mouseY = 0.0f;
 class Fluid;
 class FluidGPU;
-//Fluid* fluidPtr = nullptr;
-FluidGPU* fluidPtr = nullptr;
+Fluid* fluidPtr = nullptr;
+//FluidGPU* fluidPtr = nullptr;
 bool isMouseDown = false;
+bool isRightMouseDown = false;
+bool showFreeSpace = false;
+bool useGPU = true;
 
 // simulation
 enum Fields {
@@ -60,7 +63,7 @@ const int BORDER_OFFSET = BORDER_SIZE / 2;
 const float OVERRELAXATION = 1.9f;
 const float DENSITY = 1000.0f;
 const float SPACING = 3.0f;
-const float OBSTACLE_RADIUS = 10.0f;
+const float OBSTACLE_RADIUS = 100.0f;
 
 bool isNear(float a, float b);
 
@@ -270,7 +273,8 @@ protected:
 
 
 public:
-	Fluid(float density, int width, int height, float spacing): density(density), sizeX(width + BORDER_SIZE), sizeY(height + BORDER_SIZE), spacing(spacing) {
+	Fluid(float density, int width, int height, float spacing, float obstacleRadius): 
+		density(density), sizeX(width + BORDER_SIZE), sizeY(height + BORDER_SIZE), spacing(spacing), obstacleRadius(obstacleRadius) {
 		totalCells = sizeX * sizeY;
 		uSpeed = std::vector<float>(totalCells);
 		vSpeed = std::vector<float>(totalCells);
@@ -287,7 +291,6 @@ public:
 		frameCount = 0;
 		obstacleX = 0.0f;
 		obstacleY = 0.0f;
-		obstacleRadius = OBSTACLE_RADIUS;
 	}
 
 	virtual void update(float dt, float gravity, int iterations) {
@@ -403,17 +406,13 @@ private:
 		glBindImageTexture(1, freeSpaceTexture, 0, GL_FALSE, 0, GL_READ_ONLY, GL_R32F);
 		glBindImageTexture(2, pressureTexture, 0, GL_FALSE, 0, GL_READ_WRITE, GL_R32F);
 
-		// using Red-Black Gauss-Seidel method
+		// using 4-color Gauss-Seidel method
 		for (int i = 0; i < iterations; i++) {
-			// red pass
-			incompressibilityShader.setInt("pass", 0);
-			glDispatchCompute((sizeX + 15) / 16, (sizeY + 15) / 16, 1);
-			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
-
-			// black pass
-			incompressibilityShader.setInt("pass", 1);
-			glDispatchCompute((sizeX + 15) / 16, (sizeY + 15) / 16, 1);
-			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+			for (int j = 0; j < 4; j++) {
+				incompressibilityShader.setInt("pass", j);
+				glDispatchCompute((sizeX + 15) / 16, (sizeY + 15) / 16, 1);
+				glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+			}
 		}
 	}
 
@@ -455,6 +454,7 @@ private:
 		advectSmokeShader.setInt("smokeTexture", 1);
 
 		glBindImageTexture(0, newSmokeTexture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R32F);
+		glBindImageTexture(1, freeSpaceTexture, 0, GL_FALSE, 0, GL_READ_ONLY, GL_R32F);
 
 		glDispatchCompute((sizeX + 15) / 16, (sizeY + 15) / 16, 1);
 		glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
@@ -463,8 +463,8 @@ private:
 	}
 
 public:
-	FluidGPU(float density, int width, int height, float spacing) :
-		Fluid(density, width, height, spacing),
+	FluidGPU(float density, int width, int height, float spacing, float obstacleRadius) :
+		Fluid(density, width, height, spacing, obstacleRadius),
 		integrateShader("integrate.comp"),
 		incompressibilityShader("incompressibility.comp"),
 		extrapolateShader("extrapolate.comp"),
@@ -495,16 +495,16 @@ public:
 		glGenTextures(1, &velocityTexture);
 		glBindTexture(GL_TEXTURE_2D, velocityTexture);
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, sizeX, sizeY, 0, GL_RGBA, GL_FLOAT, NULL);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
 		glGenTextures(1, &newVelocityTexture);
 		glBindTexture(GL_TEXTURE_2D, newVelocityTexture);
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, sizeX, sizeY, 0, GL_RGBA, GL_FLOAT, NULL);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
@@ -528,16 +528,16 @@ public:
 		glGenTextures(1, &smokeTexture);
 		glBindTexture(GL_TEXTURE_2D, smokeTexture);
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, sizeX, sizeY, 0, GL_RED, GL_FLOAT, smoke.data());
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
 		glGenTextures(1, &newSmokeTexture);
 		glBindTexture(GL_TEXTURE_2D, newSmokeTexture);
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, sizeX, sizeY, 0, GL_RED, GL_FLOAT, smoke.data());
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, sizeX, sizeY, 0, GL_RED, GL_FLOAT, NULL);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 	}
@@ -592,6 +592,10 @@ public:
 	unsigned int getVelocityTexture() const {
 		return velocityTexture;
 	}
+
+	unsigned int getFreeSpaceTexture() const {
+		return freeSpaceTexture;
+	}
 };
 
 // rendering
@@ -642,9 +646,10 @@ int main() {
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-	//Fluid fluid = Fluid(DENSITY, 100, 100, SPACING);
-	FluidGPU fluid = FluidGPU(DENSITY, 100, 100, SPACING);
-	fluidPtr = &fluid;
+	Fluid fluid = Fluid(DENSITY, 100, 100, SPACING, OBSTACLE_RADIUS / 10.0f);
+	FluidGPU fluidGPU = FluidGPU(DENSITY, 1024, 1024, SPACING, OBSTACLE_RADIUS);
+
+	fluidPtr = &fluidGPU;
 
 	// setup quad
 	float quadVertices[] = {
@@ -679,15 +684,15 @@ int main() {
 	glBindVertexArray(0);
 
 	// setup smoke texture
-	//glGenTextures(1, &smokeTexture);
-	//glBindTexture(GL_TEXTURE_2D, smokeTexture);
+	glGenTextures(1, &smokeTexture);
+	glBindTexture(GL_TEXTURE_2D, smokeTexture);
 
-	//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-	//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
-	//glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, fluid.getSizeX(), fluid.getSizeY(), 0, GL_RED, GL_FLOAT, NULL);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, fluid.getSizeX(), fluid.getSizeY(), 0, GL_RED, GL_FLOAT, NULL);
 
 	Shader shader = Shader("smoke.vert", "smoke.frag");
 	shader.use();
@@ -700,11 +705,18 @@ int main() {
 		deltaTime = currentTime - lastTime;
 		lastTime = currentTime;
 
+		if (useGPU) {
+			fluidPtr = &fluidGPU;
+		}
+		else {
+			fluidPtr = &fluid;
+		}
+
 		// update
 		if (isMouseDown) {
-			fluidPtr->setObstacle(1.0f / 60.0f, mouseX, mouseY, true);
+			fluidPtr->setObstacle(1.0f / 60.0f, mouseX, mouseY, isRightMouseDown);
 		}
-		fluid.update(1.0f / 60.0f, -9.81f, 40);
+		fluidPtr->update(1.0f / 60.0f, -9.81f, 40);
 
 		// render
 		glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
@@ -713,8 +725,23 @@ int main() {
 
 		//glBindTexture(GL_TEXTURE_2D, smokeTexture);
 		//glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, fluid.getSizeX(), fluid.getSizeY(), GL_RED, GL_FLOAT, fluid.getMaterialData());
-		glActiveTexture(GL_TEXTURE0);
-		glBindTexture(GL_TEXTURE_2D, fluid.getSmokeTexture());
+		switch (useGPU) {
+			case true:
+				glActiveTexture(GL_TEXTURE0);
+				if (showFreeSpace) {
+					glBindTexture(GL_TEXTURE_2D, fluidGPU.getFreeSpaceTexture());
+				}
+				else {
+					glBindTexture(GL_TEXTURE_2D, fluidGPU.getSmokeTexture());
+				}
+				break;
+
+			case false:
+				glBindTexture(GL_TEXTURE_2D, smokeTexture);
+				glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, fluid.getSizeX(), fluid.getSizeY(), GL_RED, GL_FLOAT, fluid.getMaterialData());
+				break;
+		}
+
 		//glBindTexture(GL_TEXTURE_2D, fluid.getVelocityTexture());
 
 		shader.use();
@@ -744,10 +771,10 @@ void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods) {
 	}
 
 	if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS) {
-
+		isRightMouseDown = true;
 	}
 	else if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_RELEASE) {
-
+		isRightMouseDown = false;
 	}
 }
 
@@ -771,6 +798,14 @@ void mouseCallBack(GLFWwindow* window, double xpos, double ypos) {
 void processInput(GLFWwindow* window) {
 	if (getKeyDown(window, GLFW_KEY_ESCAPE)) {
 		glfwSetWindowShouldClose(window, true);
+	}
+
+	if (getKeyDown(window, GLFW_KEY_SPACE)) {
+		showFreeSpace = !showFreeSpace;
+	}
+
+	if (getKeyDown(window, GLFW_KEY_G)) {
+		useGPU = !useGPU;
 	}
 }
 
