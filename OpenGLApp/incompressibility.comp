@@ -8,7 +8,7 @@ layout(r32f, binding = 2) uniform image2D pressureImage;
 
 uniform float pressureScaling;
 uniform float overrelaxation;
-uniform int pass; // 0 for red, 1 for black
+uniform int pass; // 4 pass: 0-3
 uniform ivec2 gridSize;
 
 void main() {
