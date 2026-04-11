@@ -8,7 +8,7 @@ Speed up + increased simulation resolution
 
 ## Simulate using CPU
 
-<video src="https://github.com/user-attachments/assets/a1f2bb5f-8cee-431c-96f2-ddbdc7d39e3d" muted autoplay loop playsinline width="100%"></video>
+https://github.com/user-attachments/assets/443b64b3-3dfc-4f0b-b583-f8a165b45bd8
 
 Low simulation resolution, high performance hit at high resolution
 
