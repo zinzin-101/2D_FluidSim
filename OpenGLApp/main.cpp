@@ -303,7 +303,7 @@ public:
 		frameCount++;
 	}
 
-	void setObstacle(float dt, float x, float y, bool reset) {
+	virtual void setObstacle(float dt, float x, float y, bool reset) {
 		float vx = 0.0f;
 		float vy = 0.0f;
 		if (!reset) {
@@ -367,6 +367,7 @@ private:
 	ComputeShader extrapolateShader;
 	ComputeShader advectVelocityShader;
 	ComputeShader advectSmokeShader;
+	ComputeShader setObstacleShader;
 	unsigned int velocityTexture; // R channel: U, G channel: V
 	unsigned int freeSpaceTexture; // R channel only
 	unsigned int pressureTexture; // R channel only
@@ -432,7 +433,7 @@ private:
 
 		glActiveTexture(GL_TEXTURE2);
 		glBindTexture(GL_TEXTURE_2D, velocityTexture);
-		advectVelocityShader.setInt("newVelocityTexture", 2);
+		advectVelocityShader.setInt("velocityTexture", 2);
 
 		glDispatchCompute((sizeX + 15) / 16, (sizeY + 15) / 16, 1);
 		glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
@@ -469,6 +470,7 @@ public:
 		extrapolateShader("extrapolate.comp"),
 		advectVelocityShader("advect_velocity.comp"),
 		advectSmokeShader("advect_smoke.comp"),
+		setObstacleShader("set_obstacle.comp"),
 		velocityTexture{}, freeSpaceTexture{}, pressureTexture{}, newVelocityTexture{}, smokeTexture{}, newSmokeTexture{}
 	{
 		integrateShader.use();
@@ -485,6 +487,9 @@ public:
 
 		advectSmokeShader.use();
 		advectSmokeShader.setIVec2("gridSize", sizeX, sizeY);
+
+		setObstacleShader.use();
+		setObstacleShader.setIVec2("gridSize", sizeX, sizeY);
 
 		// velocity
 		glGenTextures(1, &velocityTexture);
@@ -509,6 +514,8 @@ public:
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, sizeX, sizeY, 0, GL_RED, GL_FLOAT, freeSpace.data());
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
 		// pressure
 		glGenTextures(1, &pressureTexture);
@@ -523,12 +530,16 @@ public:
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, sizeX, sizeY, 0, GL_RED, GL_FLOAT, smoke.data());
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
 		glGenTextures(1, &newSmokeTexture);
 		glBindTexture(GL_TEXTURE_2D, newSmokeTexture);
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, sizeX, sizeY, 0, GL_RED, GL_FLOAT, NULL);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, sizeX, sizeY, 0, GL_RED, GL_FLOAT, smoke.data());
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 	}
 
 	virtual void update(float dt, float gravity, int iterations) override {
@@ -540,6 +551,46 @@ public:
 		advectSmoke(dt);
 
 		frameCount++;
+	}
+
+	virtual void setObstacle(float dt, float x, float y, bool reset) override {
+		std::swap(x, y);
+		float vx = 0.0f;
+		float vy = 0.0f;
+		if (!reset) {
+			vx = (x - obstacleX) / dt;
+			vy = (y - obstacleY) / dt;
+		}
+
+		obstacleX = x;
+		obstacleY = y;
+
+		setObstacleShader.use();
+		setObstacleShader.setVec2("mousePos", x, y);
+		setObstacleShader.setVec2("mouseVel", vx, vy);
+		setObstacleShader.setFloat("radius", obstacleRadius);
+		setObstacleShader.setFloat("spacing", spacing);
+		setObstacleShader.setBool("isReset", reset);
+		setObstacleShader.setIVec2("gridSize", sizeX, sizeY);
+
+		//float smokeColor = 0.5f + 0.5f * sin((float)frameCount * 2.0f);
+		float smokeColor = 0.0f;
+		setObstacleShader.setFloat("smokeColor", smokeColor);
+		
+		glBindImageTexture(0, velocityTexture, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
+		glBindImageTexture(1, freeSpaceTexture, 0, GL_FALSE, 0, GL_READ_WRITE, GL_R32F);
+		glBindImageTexture(2, smokeTexture, 0, GL_FALSE, 0, GL_READ_WRITE, GL_R32F);
+
+		glDispatchCompute((sizeX + 15) / 16, (sizeY + 15) / 16, 1);
+		glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+	}
+
+	unsigned int getSmokeTexture() const {
+		return smokeTexture;
+	}
+
+	unsigned int getVelocityTexture() const {
+		return velocityTexture;
 	}
 };
 
@@ -562,9 +613,9 @@ int main() {
 	GLFWmonitor* primaryMonitor = glfwGetPrimaryMonitor();
 	const GLFWvidmode* mode = glfwGetVideoMode(primaryMonitor);
 	#ifdef FULLSCREEN
-	window = glfwCreateWindow(WIDTH, HEIGHT, "2D_FLuidSim", primaryMonitor, NULL);
+	window = glfwCreateWindow(WIDTH, HEIGHT, "2D_FluidSim", primaryMonitor, NULL);
 	#else
-	window = glfwCreateWindow(WIDTH, HEIGHT, "2D_FLuidSim", NULL, NULL);
+	window = glfwCreateWindow(WIDTH, HEIGHT, "2D_FluidSim", NULL, NULL);
 	glfwSetWindowPos(window, (mode->width / 2) - (WIDTH / 2), (mode->height / 2) - (HEIGHT / 2));
 	#endif
 	if (window == NULL) {
@@ -628,17 +679,18 @@ int main() {
 	glBindVertexArray(0);
 
 	// setup smoke texture
-	glGenTextures(1, &smokeTexture);
-	glBindTexture(GL_TEXTURE_2D, smokeTexture);
+	//glGenTextures(1, &smokeTexture);
+	//glBindTexture(GL_TEXTURE_2D, smokeTexture);
 
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, fluid.getSizeX(), fluid.getSizeY(), 0, GL_RED, GL_FLOAT, NULL);
+	//glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, fluid.getSizeX(), fluid.getSizeY(), 0, GL_RED, GL_FLOAT, NULL);
 
 	Shader shader = Shader("smoke.vert", "smoke.frag");
+	shader.use();
 	shader.setInt("smokeTexture", 0);
 
 	while (!glfwWindowShouldClose(window)) {
@@ -659,9 +711,11 @@ int main() {
 		//glClearColor(1.0f, 0.0f, 0.0f, 1.0f);
 		glClear(GL_COLOR_BUFFER_BIT);
 
-		glBindTexture(GL_TEXTURE_2D, smokeTexture);
-		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, fluid.getSizeX(), fluid.getSizeY(), GL_RED, GL_FLOAT, fluid.getMaterialData());
-		//glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, fluid.getSizeX(), fluid.getSizeY(), GL_RED, GL_FLOAT, fluid.getPressureData());
+		//glBindTexture(GL_TEXTURE_2D, smokeTexture);
+		//glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, fluid.getSizeX(), fluid.getSizeY(), GL_RED, GL_FLOAT, fluid.getMaterialData());
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, fluid.getSmokeTexture());
+		//glBindTexture(GL_TEXTURE_2D, fluid.getVelocityTexture());
 
 		shader.use();
 		//glm::mat4 projection = glm::ortho(0.0f, (float)WIDTH, 0.0f, (float)HEIGHT);

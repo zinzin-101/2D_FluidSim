@@ -1,0 +1,35 @@
+#version 430 core
+layout(local_size_x = 16, local_size_y = 16) in;
+
+layout(rgba32f, binding = 0) uniform image2D velocityImage;
+layout(r32f, binding = 1) uniform image2D freeSpaceImage;
+layout(r32f, binding = 2) uniform image2D smokeImage;
+
+uniform vec2 mousePos;    
+uniform vec2 mouseVel;    
+uniform float radius;     
+uniform float spacing;    
+uniform float smokeColor; 
+uniform bool isReset;     
+uniform ivec2 gridSize;
+
+void main() {
+    ivec2 id = ivec2(gl_GlobalInvocationID.xy);
+    if (id.x >= gridSize.x || id.y >= gridSize.y) return;
+
+    //if (isReset) {
+    //    imageStore(freeSpaceImage, id, vec4(1.0));
+    //    return;
+    //}
+
+    vec2 cellPos = (vec2(id) + 0.5) * spacing;
+    float dist = distance(cellPos, mousePos);
+
+    if (dist < radius) {
+        imageStore(freeSpaceImage, id, vec4(0.0));
+        
+        imageStore(velocityImage, id, vec4(mouseVel.x, mouseVel.y, 0.0, 1.0));
+        
+        imageStore(smokeImage, id, vec4(smokeColor));
+    }
+}
