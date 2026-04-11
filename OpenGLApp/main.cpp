@@ -646,9 +646,8 @@ int main() {
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-	Fluid fluid = Fluid(DENSITY, 100, 100, SPACING, OBSTACLE_RADIUS / 10.0f);
+	Fluid fluid = Fluid(DENSITY, 256, 256, SPACING, OBSTACLE_RADIUS / 4.0f);
 	FluidGPU fluidGPU = FluidGPU(DENSITY, 1024, 1024, SPACING, OBSTACLE_RADIUS);
-
 	fluidPtr = &fluidGPU;
 
 	// setup quad
@@ -707,16 +706,17 @@ int main() {
 
 		if (useGPU) {
 			fluidPtr = &fluidGPU;
+			fluidPtr->update(1.0f / 60.0f, -98.1f, 40);
 		}
 		else {
 			fluidPtr = &fluid;
+			fluidPtr->update(1.0f / 60.0f, -9.81f, 40);
 		}
 
 		// update
 		if (isMouseDown) {
 			fluidPtr->setObstacle(1.0f / 60.0f, mouseX, mouseY, isRightMouseDown);
 		}
-		fluidPtr->update(1.0f / 60.0f, -9.81f, 40);
 
 		// render
 		glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
