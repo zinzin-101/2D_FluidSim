@@ -2,13 +2,13 @@
 
 ## Simulate using GPU
 
-<video src="https://github.com/user-attachments/assets/1300d85d-5708-4eb8-956b-52a913ac5056" controls autoplay loop muted playsinline width="100%"></video>
+<video src="https://github.com/user-attachments/assets/1300d85d-5708-4eb8-956b-52a913ac5056" controls autoplay loop muted playsinline webkit-playsinline width="100%"></video>
 
 Speed up + increased simulation resolution
 
 ## Simulate using CPU
 
-<video src="https://github.com/user-attachments/assets/a1f2bb5f-8cee-431c-96f2-ddbdc7d39e3d" controls autoplay loop muted playsinline width="100%"></video>
+<video src="https://github.com/user-attachments/assets/a1f2bb5f-8cee-431c-96f2-ddbdc7d39e3d" controls autoplay loop muted playsinline webkit-playsinline width="100%"></video>
 
 Low simulation resolution, high performance hit at high resolution
 
