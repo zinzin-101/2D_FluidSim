@@ -751,6 +751,23 @@ int main() {
 		glBindVertexArray(vao);
 		glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 
+
+		// show average FPS
+		static unsigned int frameNum = 0;
+		static double timeElapsed = 0.0;
+		static double fps = 0.0;
+
+		timeElapsed += deltaTime;
+		frameNum++;
+
+		if (timeElapsed >= 1.0f) {
+			fps = frameNum / timeElapsed;
+			timeElapsed = 0.0f;
+			frameNum = 0;
+			std::string mode = useGPU ? "GPU" : "CPU";
+			std::cout << "FPS: " << fps << " mode: " << mode << std::endl;
+		}
+
 		glfwSwapBuffers(window);
 		glfwPollEvents();
 	}
