@@ -12,6 +12,17 @@ https://github.com/user-attachments/assets/443b64b3-3dfc-4f0b-b583-f8a165b45bd8
 
 Low simulation resolution, high performance hit at high resolution
 
+## CPU vs GPU at 1024 x 1024 resolution
+
+
+https://github.com/user-attachments/assets/d65d08e9-c4b8-4cca-b38c-d680f6481db2
+
+
+
+https://github.com/user-attachments/assets/9484b86e-e063-4040-8d3e-a0087320b697
+
+
+
 ## CPU vs GPU at 512 x 512 resolution
 
 https://github.com/user-attachments/assets/f1dca60a-2638-46e5-b30d-f914dcbd385f
